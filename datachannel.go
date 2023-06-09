@@ -4,21 +4,28 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"log"
 	"net/http"
+	"sync"
 	"time"
 
 	webrtc "github.com/pion/webrtc/v3"
 )
 
+type ID string
+type NAME string
+
 type WebrtcDataChannel struct {
-	config         Config
-	signaling      *Signaling
-	apiWebrtc      *webrtc.API
-	peerConnection *webrtc.PeerConnection
-	dataChannel    *webrtc.DataChannel
+	sync.Mutex
+	config        Config
+	signaling     *Signaling
+	apiWebrtc     *webrtc.API
+	pcControlling map[ID]*webrtc.PeerConnection
+	pcControlled  map[ID]*webrtc.PeerConnection
+	dataChannel   *webrtc.DataChannel
 
 	connected chan struct{}
 	close     chan struct{}
@@ -29,10 +36,12 @@ func New(config *Config) (*WebrtcDataChannel, error) {
 		return nil, fmt.Errorf("invalid type:%d", config.Type)
 	}
 	v := WebrtcDataChannel{
-		config:    *config,
-		apiWebrtc: webrtc.NewAPI(),
-		connected: make(chan struct{}),
-		close:     make(chan struct{}),
+		config:        *config,
+		apiWebrtc:     webrtc.NewAPI(),
+		pcControlling: make(map[ID]*webrtc.PeerConnection),
+		pcControlled:  make(map[ID]*webrtc.PeerConnection),
+		connected:     make(chan struct{}),
+		close:         make(chan struct{}),
 	}
 	signaling, err := NewSignaling(&v, &SignalingConfig{
 		Provider: &v,
@@ -79,7 +88,9 @@ func (webrtcDC *WebrtcDataChannel) Start(ctx context.Context) (err error) {
 
 	switch webrtcDC.config.Type {
 	case TypeOfferer:
-		_, err = webrtcDC.sendOffer(ctx)
+		for _, addr := range webrtcDC.config.ConfigSignaling.Addresses {
+			_, err = webrtcDC.sendOffer(ctx, addr)
+		}
 	case TypeAnswerer:
 		webrtcDC.signaling.Start()
 		defer func() {
@@ -87,7 +98,6 @@ func (webrtcDC *WebrtcDataChannel) Start(ctx context.Context) (err error) {
 				webrtcDC.signaling.Stop()
 			}
 		}()
-		err = webrtcDC.startServer(ctx)
 	default:
 		err = fmt.Errorf("invalid type:%d", webrtcDC.config.Type)
 	}
@@ -111,30 +121,24 @@ func (webrtcDC *WebrtcDataChannel) Start(ctx context.Context) (err error) {
 	return err
 }
 
-func (webrtcDC *WebrtcDataChannel) startClient(ctx context.Context) error {
-	webrtcDC.sendOffer(ctx)
-	return nil
-}
-
-func (webrtcDC *WebrtcDataChannel) startServer(ctx context.Context) error {
-	return nil
-}
-
 func (webrtcDC *WebrtcDataChannel) Connected() <-chan struct{} {
 	return webrtcDC.connected
 }
 
-func (webrtcDC *WebrtcDataChannel) SendText(msg string) {
-	if webrtcDC.dataChannel == nil {
-		log.Println("datachannel is null ?!?")
-		return
-	}
-	err := webrtcDC.dataChannel.SendText(msg)
-	if err != nil {
-		log.Printf("datachannel send error:%v\n", err)
-		return
+func (webrtcDC *WebrtcDataChannel) SendText(msg string) error {
+	// webrtcDC.Lock()
+	// channel, found := webrtcDC.dataChannel[NAME(channelName)]
+	// webrtcDC.Unlock()
 
+	// if !found {
+	// 	return errors.New("channel not found")
+	// }
+	// channel.SendText(msg)
+	if webrtcDC.dataChannel == nil {
+		return errors.New("no datachannel")
 	}
+	webrtcDC.dataChannel.SendText(msg)
+	return nil
 }
 
 /*
@@ -168,20 +172,24 @@ func (webrtcDC *WebrtcDataChannel) routeOffer(w http.ResponseWriter, req *http.R
 		return
 	}
 
-	if webrtcDC.peerConnection != nil {
-		replyStatus(w, http.StatusBadRequest)
-		log.Printf("peer connection already create")
-		return
-	}
-
-	webrtcDC.peerConnection, err = webrtc.NewPeerConnection(webrtcDC.config.ConfigWebrtc.Config)
+	var pc *webrtc.PeerConnection
+	pc, err = webrtc.NewPeerConnection(webrtcDC.config.ConfigWebrtc.Config)
 	if err != nil {
 		replyStatus(w, http.StatusBadRequest)
 		log.Println("new peer connection error:", err)
 		return
 	}
 
-	webrtcDC.peerConnection.OnDataChannel(func(dc *webrtc.DataChannel) {
+	id := ID(req.Proto + req.RemoteAddr)
+	log.Println("proto:", req.Proto, "remote addr:", req.RemoteAddr)
+	webrtcDC.Lock()
+	if _, found := webrtcDC.pcControlled[id]; !found {
+		log.Println("Adding")
+		webrtcDC.pcControlled[id] = pc
+	}
+	webrtcDC.Unlock()
+
+	pc.OnDataChannel(func(dc *webrtc.DataChannel) {
 		log.Println("on datachannel:", dc)
 		webrtcDC.dataChannel = dc
 		webrtcDC.connected <- struct{}{}
@@ -189,7 +197,7 @@ func (webrtcDC *WebrtcDataChannel) routeOffer(w http.ResponseWriter, req *http.R
 
 	// Créer un DataChannel
 	var dataChannel *webrtc.DataChannel
-	dataChannel, err = webrtcDC.peerConnection.CreateDataChannel(webrtcDC.config.ConfigWebrtc.DataChannelID, nil)
+	dataChannel, err = pc.CreateDataChannel(webrtcDC.config.ConfigWebrtc.DataChannelID, nil)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -198,34 +206,48 @@ func (webrtcDC *WebrtcDataChannel) routeOffer(w http.ResponseWriter, req *http.R
 		log.Printf("Message received on datachannel : %s\n", string(msg.Data))
 	})
 
-	err = webrtcDC.peerConnection.SetRemoteDescription(jsep)
+	err = pc.SetRemoteDescription(jsep)
 	if err != nil {
 		replyStatus(w, http.StatusBadRequest)
 		log.Println("set remote description error:", err)
 		return
 	}
 
-	webrtcDC.peerConnection.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
+	pc.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
 		log.Println("peer connection state:", state)
+		switch state {
+		case webrtc.PeerConnectionStateFailed:
+			fallthrough
+		case webrtc.PeerConnectionStateDisconnected:
+			pc.Close()
+			webrtcDC.Lock()
+			for id, peerconnection := range webrtcDC.pcControlled {
+				if peerconnection == pc {
+					delete(webrtcDC.pcControlled, id)
+					break
+				}
+			}
+			webrtcDC.Unlock()
+		}
 
 	})
-	iceCandidateCompleteChan := webrtc.GatheringCompletePromise(webrtcDC.peerConnection)
+	iceCandidateCompleteChan := webrtc.GatheringCompletePromise(pc)
 
-	answer, err := webrtcDC.peerConnection.CreateAnswer(nil)
+	answer, err := pc.CreateAnswer(nil)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	err = webrtcDC.peerConnection.SetLocalDescription(answer)
+	err = pc.SetLocalDescription(answer)
 	if err != nil {
 		replyStatus(w, http.StatusBadRequest)
 		log.Println("set local description error:", err)
 		return
 	}
 	<-iceCandidateCompleteChan
-	log.Println("localdesc:", webrtcDC.peerConnection.LocalDescription())
+	log.Println("localdesc:", pc.LocalDescription())
 	var answerRaw []byte
-	answerRaw, err = json.Marshal(webrtcDC.peerConnection.LocalDescription())
+	answerRaw, err = json.Marshal(pc.LocalDescription())
 	if err != nil {
 		replyStatus(w, http.StatusBadRequest)
 		log.Println("marshal answer error:", err)
@@ -246,18 +268,29 @@ func (webrtcDC *WebrtcDataChannel) routeOffer(w http.ResponseWriter, req *http.R
 	}
 
 }
-func (webrtcDC *WebrtcDataChannel) sendOffer(ctx context.Context) (*webrtc.SessionDescription, error) {
+func (webrtcDC *WebrtcDataChannel) sendOffer(ctx context.Context, addr string) (*webrtc.SessionDescription, error) {
 	err := webrtcDC.Err()
 	if err != nil {
 		return nil, err
 	}
-	webrtcDC.peerConnection, err = webrtc.NewPeerConnection(webrtcDC.config.ConfigWebrtc.Config)
+
+	var pc *webrtc.PeerConnection
+	pc, err = webrtc.NewPeerConnection(webrtcDC.config.ConfigWebrtc.Config)
 	if err != nil {
 		log.Println("new peer connection error:", err)
 		return nil, err
 	}
 
-	webrtcDC.peerConnection.OnDataChannel(func(dc *webrtc.DataChannel) {
+	id := ID(addr)
+	log.Println(addr)
+	webrtcDC.Lock()
+	if _, found := webrtcDC.pcControlling[id]; !found {
+		log.Println("Adding new peerconnection (controlling)")
+		webrtcDC.pcControlling[id] = pc
+	}
+	webrtcDC.Unlock()
+
+	pc.OnDataChannel(func(dc *webrtc.DataChannel) {
 		log.Println("on datachannel:", dc)
 		webrtcDC.dataChannel = dc
 		webrtcDC.connected <- struct{}{}
@@ -265,7 +298,7 @@ func (webrtcDC *WebrtcDataChannel) sendOffer(ctx context.Context) (*webrtc.Sessi
 
 	// Créer un DataChannel
 	var dataChannel *webrtc.DataChannel
-	dataChannel, err = webrtcDC.peerConnection.CreateDataChannel(webrtcDC.config.ConfigWebrtc.DataChannelID, nil)
+	dataChannel, err = pc.CreateDataChannel(webrtcDC.config.ConfigWebrtc.DataChannelID, nil)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -280,19 +313,31 @@ func (webrtcDC *WebrtcDataChannel) sendOffer(ctx context.Context) (*webrtc.Sessi
 		log.Printf("Message received on datachannel : %s\n", string(msg.Data))
 	})
 
-	webrtcDC.peerConnection.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
-		log.Println("peer connection state:", state)
-
+	pc.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
+		switch state {
+		case webrtc.PeerConnectionStateFailed:
+			fallthrough
+		case webrtc.PeerConnectionStateDisconnected:
+			pc.Close()
+			webrtcDC.Lock()
+			for id, peerconnection := range webrtcDC.pcControlling {
+				if peerconnection == pc {
+					delete(webrtcDC.pcControlling, id)
+					break
+				}
+			}
+			webrtcDC.Unlock()
+		}
 	})
-	iceCandidateCompleteChan := webrtc.GatheringCompletePromise(webrtcDC.peerConnection)
+	iceCandidateCompleteChan := webrtc.GatheringCompletePromise(pc)
 	// Générer l'offre SDP
-	offer, err := webrtcDC.peerConnection.CreateOffer(nil)
+	offer, err := pc.CreateOffer(nil)
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	// Définir la description de l'offre SDP en tant que description locale de PeerConnection
-	err = webrtcDC.peerConnection.SetLocalDescription(offer)
+	err = pc.SetLocalDescription(offer)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -303,16 +348,16 @@ func (webrtcDC *WebrtcDataChannel) sendOffer(ctx context.Context) (*webrtc.Sessi
 	<-iceCandidateCompleteChan
 
 	var offerRaw []byte
-	offerRaw, err = json.Marshal(webrtcDC.peerConnection.LocalDescription())
+	offerRaw, err = json.Marshal(pc.LocalDescription())
 	if err != nil {
 		return nil, err
 	}
 
-	log.Println(webrtcDC.peerConnection.LocalDescription())
+	log.Println(pc.LocalDescription())
 	buff := bytes.NewBuffer(offerRaw)
 	client := http.Client{Timeout: 30 * time.Second}
 	var resp *http.Response
-	resp, err = client.Post("http://localhost:8888/offer", "application/json", buff)
+	resp, err = client.Post("http://"+addr+"/offer", "application/json", buff)
 	if err != nil {
 		return nil, err
 	}
@@ -329,7 +374,7 @@ func (webrtcDC *WebrtcDataChannel) sendOffer(ctx context.Context) (*webrtc.Sessi
 		return nil, err
 	}
 
-	webrtcDC.peerConnection.SetRemoteDescription(answer)
+	pc.SetRemoteDescription(answer)
 	return &answer, nil
 }
 

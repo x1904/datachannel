@@ -20,7 +20,11 @@ func main() {
 					},
 				},
 			},
+
 			DataChannelID: "test",
+		},
+		ConfigSignaling: datachannel.SignalingConfig{
+			Addresses: []string{"localhost:8888"},
 		},
 	})
 	if err != nil {
