@@ -32,7 +32,7 @@ type WebrtcDataChannel struct {
 }
 
 func New(config *Config) (*WebrtcDataChannel, error) {
-	if config.Type != TypeOfferer && config.Type != TypeAnswerer {
+	if config.Type != TypeOfferer && config.Type != TypeAnswerer && config.Type != TypeGateway {
 		return nil, fmt.Errorf("invalid type:%d", config.Type)
 	}
 	v := WebrtcDataChannel{
@@ -98,6 +98,16 @@ func (webrtcDC *WebrtcDataChannel) Start(ctx context.Context) (err error) {
 				webrtcDC.signaling.Stop()
 			}
 		}()
+	case TypeGateway:
+		webrtcDC.signaling.Start()
+		defer func() {
+			if err != nil {
+				webrtcDC.signaling.Stop()
+			}
+		}()
+		for _, addr := range webrtcDC.config.ConfigSignaling.Addresses {
+			_, err = webrtcDC.sendOffer(ctx, addr)
+		}
 	default:
 		err = fmt.Errorf("invalid type:%d", webrtcDC.config.Type)
 	}

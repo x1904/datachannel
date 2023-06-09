@@ -6,4 +6,5 @@ const (
 	TypeUndefined = iota
 	TypeOfferer
 	TypeAnswerer
+	TypeGateway
 )
