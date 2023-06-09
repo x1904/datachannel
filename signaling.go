@@ -61,3 +61,9 @@ func replyStatus(rw http.ResponseWriter, status int) {
 		rw.WriteHeader(status)
 	}
 }
+
+func addCors(rw http.ResponseWriter, allowOrigin string) {
+	rw.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+	rw.Header().Set("Access-Control-Allow-Origin", allowOrigin)
+	rw.Header().Set("Access-Control-Allow-Methods", "OPTIONS,POST,GET")
+}

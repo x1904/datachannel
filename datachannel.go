@@ -142,6 +142,18 @@ func (webrtcDC *WebrtcDataChannel) SendText(msg string) {
  */
 func (webrtcDC *WebrtcDataChannel) routeOffer(w http.ResponseWriter, req *http.Request) {
 	log.Println("ROUTE OFFER")
+	method := req.Method
+	if method == http.MethodOptions {
+		addCors(w, webrtcDC.config.ConfigSignaling.AllowOrigin)
+		return
+	}
+
+	if method != http.MethodOptions &&
+		method != http.MethodGet &&
+		method != http.MethodPost {
+		replyStatus(w, http.StatusMethodNotAllowed)
+		return
+	}
 	buf, err := ioutil.ReadAll(req.Body)
 	if err != nil {
 		replyStatus(w, http.StatusBadRequest)

@@ -18,7 +18,8 @@ type WebrtcConfig struct {
 }
 
 type SignalingConfig struct {
-	Provider *WebrtcDataChannel
-	Address  string
-	Routes   map[string]func(w http.ResponseWriter, _ *http.Request)
+	Provider    *WebrtcDataChannel
+	Address     string
+	Routes      map[string]func(w http.ResponseWriter, _ *http.Request)
+	AllowOrigin string
 }
