@@ -3,9 +3,9 @@ package main
 import (
 	"context"
 	"log"
-	"malwarux/datachannel"
 
 	"github.com/pion/webrtc/v3"
+	"github.com/x1904/datachannel"
 )
 
 func main() {
