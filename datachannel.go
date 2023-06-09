@@ -232,6 +232,13 @@ func (webrtcDC *WebrtcDataChannel) routeOffer(w http.ResponseWriter, req *http.R
 		return
 	}
 
+	allowOrigin := webrtcDC.config.ConfigSignaling.AllowOrigin
+	if allowOrigin != "" {
+		addCors(w, allowOrigin)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+
 	if n, err := w.Write(answerRaw); err != nil {
 		log.Println("write response error:", err)
 	} else if n != len(answerRaw) {
