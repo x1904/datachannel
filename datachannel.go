@@ -228,12 +228,16 @@ func (webrtcDC *WebrtcDataChannel) routeOffer(w http.ResponseWriter, req *http.R
 		switch state {
 		case webrtc.PeerConnectionStateFailed:
 			fallthrough
+		case webrtc.PeerConnectionStateClosed:
+			fallthrough
 		case webrtc.PeerConnectionStateDisconnected:
 			pc.Close()
 			webrtcDC.Lock()
 			for id, peerconnection := range webrtcDC.pcControlled {
 				if peerconnection == pc {
+					log.Println("deleting peer connection id->", id)
 					delete(webrtcDC.pcControlled, id)
+					log.Println("pc controlled list:%v", webrtcDC.pcControlled)
 					break
 				}
 			}
@@ -327,12 +331,16 @@ func (webrtcDC *WebrtcDataChannel) sendOffer(ctx context.Context, addr string) (
 		switch state {
 		case webrtc.PeerConnectionStateFailed:
 			fallthrough
+		case webrtc.PeerConnectionStateClosed:
+			fallthrough
 		case webrtc.PeerConnectionStateDisconnected:
 			pc.Close()
 			webrtcDC.Lock()
 			for id, peerconnection := range webrtcDC.pcControlling {
 				if peerconnection == pc {
+					log.Println("deleting peer connection id->", id)
 					delete(webrtcDC.pcControlling, id)
+					log.Println("pc controlling list:%v", webrtcDC.pcControlling)
 					break
 				}
 			}
