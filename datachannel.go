@@ -89,7 +89,10 @@ func (webrtcDC *WebrtcDataChannel) Start(ctx context.Context) (err error) {
 	switch webrtcDC.config.Type {
 	case TypeOfferer:
 		for _, addr := range webrtcDC.config.ConfigSignaling.Addresses {
-			_, err = webrtcDC.sendOffer(ctx, addr)
+			if _, errtmp := webrtcDC.sendOffer(ctx, addr); errtmp != nil {
+				log.Println(err)
+				err = errtmp
+			}
 		}
 	case TypeAnswerer:
 		webrtcDC.signaling.Start()
@@ -106,7 +109,10 @@ func (webrtcDC *WebrtcDataChannel) Start(ctx context.Context) (err error) {
 			}
 		}()
 		for _, addr := range webrtcDC.config.ConfigSignaling.Addresses {
-			_, err = webrtcDC.sendOffer(ctx, addr)
+			if _, err := webrtcDC.sendOffer(ctx, addr); err != nil {
+				log.Println(err)
+			}
+
 		}
 	default:
 		err = fmt.Errorf("invalid type:%d", webrtcDC.config.Type)
