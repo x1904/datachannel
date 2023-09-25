@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"log"
+	"time"
 
 	"github.com/pion/webrtc/v3"
 	"github.com/x1904/datachannel"
@@ -11,8 +12,7 @@ import (
 func main() {
 
 	dc, err := datachannel.New(&datachannel.Config{
-		Type: datachannel.TypeAnswerer,
-		ConfigWebrtc: datachannel.WebrtcConfig{
+		ConfigWebRTC: datachannel.WebRTCConfig{
 			Config: webrtc.Configuration{
 				ICEServers: []webrtc.ICEServer{
 					{
@@ -20,22 +20,48 @@ func main() {
 					},
 				},
 			},
-			DataChannelID: "test",
 		},
 		ConfigSignaling: datachannel.SignalingConfig{
+			Active:  true,
 			Address: ":8888",
 		},
 	})
 	if err != nil {
 		log.Fatalln(err)
 	}
-	err = dc.Start(context.Background())
+	ready := make(chan struct{})
+	err = dc.Start(context.Background(), &datachannel.Options{
+		OnOpenDatachannel: func() error {
+			close(ready)
+			return nil
+		},
+		OnMessageDatachannel: func(msg webrtc.DataChannelMessage) {
+			log.Printf("message:%s\n", msg.Data)
+		},
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
 
+	log.Println("Waiting datachannel evevnt onOpen...")
+	<-ready
 	log.Println("Connected, now send data")
-	dc.SendText("Hello world from answerer!")
+
+	dc.SendText("PC_TEST", "DC_1", "Hello world from answerer!")
+
+	ready = make(chan struct{})
+	time.Sleep(5 * time.Second)
+	dc.CreateDC("PC_TEST", "raw", datachannel.OnEvent{
+		OnOpen: func() error {
+			close(ready)
+			return nil
+		},
+		OnMessage: func(msg webrtc.DataChannelMessage) {
+			log.Printf("[PC_TEST][raw] message:%s\n", msg.Data)
+		},
+	})
+	<-ready
+	dc.SendText("PC_TEST", "raw", "another channel")
 
 	<-dc.Done()
 }

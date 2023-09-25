@@ -7,17 +7,23 @@ import (
 )
 
 type Config struct {
-	Type            Type
-	ConfigWebrtc    WebrtcConfig
+	ConfigWebRTC    WebRTCConfig
 	ConfigSignaling SignalingConfig
 }
 
-type WebrtcConfig struct {
-	Config        webrtc.Configuration
-	DataChannelID string
+type PeerConfig struct {
+	ID                    string
+	DataChannelLabels     []string
+	SignalingServerTarget string //http://localhost:8888
+}
+
+type WebRTCConfig struct {
+	Config     webrtc.Configuration
+	PeerConfig []PeerConfig
 }
 
 type SignalingConfig struct {
+	Active      bool
 	Provider    *WebrtcDataChannel
 	Address     string
 	Routes      map[string]func(w http.ResponseWriter, _ *http.Request)
