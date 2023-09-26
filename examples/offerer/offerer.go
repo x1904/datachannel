@@ -51,8 +51,12 @@ func main() {
 			ready <- struct{}{}
 			return nil
 		},
-		OnMessageDatachannel: func(msg webrtc.DataChannelMessage) {
-			log.Printf("message:%s\n", msg.Data)
+		OnMessageDatachannel: func(msg webrtc.DataChannelMessage, peerID string, datachannelID string) {
+			if msg.IsString {
+				log.Printf("[%s][%s]: %s\n", peerID, datachannelID, msg.Data)
+			} else {
+				log.Printf("[%s][%s]: %v\n", peerID, datachannelID, msg.Data[16:])
+			}
 		},
 	}); err != nil {
 		log.Fatal(err)

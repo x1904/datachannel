@@ -35,8 +35,12 @@ func main() {
 			close(ready)
 			return nil
 		},
-		OnMessageDatachannel: func(msg webrtc.DataChannelMessage) {
-			log.Printf("message:%s\n", msg.Data)
+		OnMessageDatachannel: func(msg webrtc.DataChannelMessage, peerID string, datachannelID string) {
+			if msg.IsString {
+				log.Printf("[%s][%s]: %s\n", peerID, datachannelID, msg.Data)
+			} else {
+				log.Printf("[%s][%s]: %v\n", peerID, datachannelID, msg.Data)
+			}
 		},
 	})
 	if err != nil {
@@ -56,8 +60,12 @@ func main() {
 			close(ready)
 			return nil
 		},
-		OnMessage: func(msg webrtc.DataChannelMessage) {
-			log.Printf("[PC_TEST][raw] message:%s\n", msg.Data)
+		OnMessage: func(msg webrtc.DataChannelMessage, peerID string, datachannelID string) {
+			if msg.IsString {
+				log.Printf("[%s][%s]: %s\n", peerID, datachannelID, msg.Data)
+			} else {
+				log.Printf("[%s][%s]: %v\n", peerID, datachannelID, msg.Data)
+			}
 		},
 	})
 	<-ready

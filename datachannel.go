@@ -110,7 +110,7 @@ func (webrtcDC *WebrtcDataChannel) Value(key interface{}) interface{} {
 /* Start functions */
 type Options struct {
 	OnOpenDatachannel    func() error
-	OnMessageDatachannel func(msg webrtc.DataChannelMessage)
+	OnMessageDatachannel func(msg webrtc.DataChannelMessage, peerID string, datachannelID string)
 }
 
 func (webrtcDC *WebrtcDataChannel) Start(ctx context.Context, options *Options) (err error) {
@@ -126,7 +126,6 @@ func (webrtcDC *WebrtcDataChannel) Start(ctx context.Context, options *Options) 
 				webrtcDC.signaling.Stop()
 			}
 		}()
-		// err = webrtcDC.startServer(ctx)
 	}
 
 	if options != nil {
@@ -383,7 +382,7 @@ func (webrtcDC *WebrtcDataChannel) sendOffer(config *PeerConfig, options *Option
 		}
 
 		var onopen func() error
-		var onmessage func(msg webrtc.DataChannelMessage)
+		var onmessage func(msg webrtc.DataChannelMessage, peerID string, datachannelID string)
 		if options != nil {
 			onopen = options.OnOpenDatachannel
 			onmessage = options.OnMessageDatachannel
@@ -393,10 +392,6 @@ func (webrtcDC *WebrtcDataChannel) sendOffer(config *PeerConfig, options *Option
 			OnClose:   peer.delDC,
 			OnMessage: onmessage,
 		}))
-
-		// dataChannel.OnMessage(func(msg webrtc.DataChannelMessage) {
-		// 	log.Printf("[%s][%s] Message received on datachannel : %s\n", config.ID, dataChannel.Label(), string(msg.Data))
-		// })
 	}
 
 	peerConnection.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
@@ -488,7 +483,7 @@ func (webrtcDC *WebrtcDataChannel) SendText(peerID string, channelID string, msg
 func (webrtcDC *WebrtcDataChannel) handleOnDataChannel(dc *webrtc.DataChannel, peer *Peer) {
 	log.Printf("[%s] Received onDataChannel(label:%s) event", peer.id, dc.Label())
 	var onopen func() error
-	var onmessage func(msg webrtc.DataChannelMessage)
+	var onmessage func(msg webrtc.DataChannelMessage, peerID string, datachannelID string)
 	if webrtcDC.optionsPeers != nil {
 		onopen = webrtcDC.optionsPeers.OnOpenDatachannel
 		onmessage = webrtcDC.optionsPeers.OnMessageDatachannel
