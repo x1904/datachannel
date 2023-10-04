@@ -292,3 +292,4 @@ func TestProtocol_Marshal_OK(t *testing.T) {
 		}
 	}
 }
+

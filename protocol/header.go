@@ -72,7 +72,7 @@ func Unmarshal(buffer []byte) (Header, error) {
 		}
 		length := binary.BigEndian.Uint32(buffer[34:])
 
-		index := bytes.Index(buffer[2:34], []byte{0x0})
+    index := bytes.Index(buffer[2:34], []byte{0x0})
 		if index == -1 {
 			buffer[33] = 0
 			index = 31
