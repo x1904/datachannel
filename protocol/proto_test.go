@@ -66,7 +66,7 @@ func TestProtocol_Unmarshal_OK(t *testing.T) {
 			},
 			V: MetaData{
 				Type: DataTypeJSON,
-				Name: "filename_json",
+				Name: generateName("filename_json"),
 			},
 		},
 		"ok_bin32": test{
@@ -81,7 +81,7 @@ func TestProtocol_Unmarshal_OK(t *testing.T) {
 			},
 			V: MetaData{
 				Type: DataTypeBIN32,
-				Name: "binary32elf",
+				Name: generateName("binary32elf"),
 			},
 		},
 		"ok_bin64": test{
@@ -96,7 +96,7 @@ func TestProtocol_Unmarshal_OK(t *testing.T) {
 			},
 			V: MetaData{
 				Type: DataTypeBIN64,
-				Name: "binary64elf",
+				Name: generateName("binary64elf"),
 			},
 		},
 		"ok_raw": test{
@@ -111,22 +111,27 @@ func TestProtocol_Unmarshal_OK(t *testing.T) {
 			},
 			V: MetaData{
 				Type: DataTypeRAW,
-				Name: "rawdata",
+				Name: generateName("rawdata"),
 			},
 		},
 		"ok_name": test{
 			Data: []byte{
 				0x2,
 				0x4,
-				'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h',
-				'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p',
-				'q', 'r', 's', 't', 'u', 'v', 'w', 'x',
-				'y', 'z', '0', '1', '2', '3', '4', 0,
+				0x01, 0x00, 0x02, 0x00, 0x03, 0x00, 0x04, 0x00,
+				0x05, 0x00, 0x06, 0x00, 0x07, 0x00, 0x08, 0x00,
+				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00, 0x00, 0x00, 0x11, 0x22, 0x33, 0x44, 0x55,
 				0x00, 0x00, 0x00, 0x00,
 			},
 			V: MetaData{
 				Type: DataTypeRAW,
-				Name: "abcdefghijklmnopqrstuvwxyz01234",
+				Name: [32]byte{
+					0x01, 0x00, 0x02, 0x00, 0x03, 0x00, 0x04, 0x00,
+					0x05, 0x00, 0x06, 0x00, 0x07, 0x00, 0x08, 0x00,
+					0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+					0x00, 0x00, 0x00, 0x11, 0x22, 0x33, 0x44, 0x55,
+				},
 			},
 		},
 		"ok_raw_struct": test{
@@ -142,7 +147,7 @@ func TestProtocol_Unmarshal_OK(t *testing.T) {
 			},
 			V: MetaData{
 				Type:    DataTypeRAW,
-				Name:    "rawdata2",
+				Name:    generateName("rawdata2"),
 				Payload: []byte{0x1, 0x2, 0x3, 0x4},
 			},
 		},
@@ -204,7 +209,7 @@ func TestProtocol_Marshal_KO(t *testing.T) {
 				Type: TypeData,
 				Data: MetaData{
 					Type: DataTypeBIN32,
-					Name: "ls",
+					Name: [32]byte{'l', 's'},
 				},
 			},
 		},
@@ -222,7 +227,7 @@ func TestProtocol_Marshal_KO(t *testing.T) {
 				Type: TypeData,
 				Data: MetaData{
 					Type: DataTypeBIN32,
-					Name: "ls",
+					Name: [32]byte{'l', 's'},
 				},
 			},
 		},
@@ -240,7 +245,7 @@ func TestProtocol_Marshal_KO(t *testing.T) {
 				Type: TypeData,
 				Data: MetaData{
 					Type: DataTypeBIN32,
-					Name: "ls",
+					Name: [32]byte{'l', 's'},
 				},
 			},
 		},
@@ -274,7 +279,7 @@ func TestProtocol_Marshal_OK(t *testing.T) {
 				Type: TypeData, // invalid type
 				Data: MetaData{
 					Type:    DataTypeRAW,
-					Name:    "ls",
+					Name:    generateName("ls"),
 					Payload: []byte{0xDA, 0xED, 0xBE, 0xEF},
 				},
 			},
@@ -291,4 +296,10 @@ func TestProtocol_Marshal_OK(t *testing.T) {
 			)
 		}
 	}
+}
+func generateName(name string) [32]byte {
+	ret := [32]byte{}
+	copy(ret[:], name)
+	return ret
+
 }
