@@ -30,9 +30,10 @@ func main() {
 		log.Fatalln(err)
 	}
 	ready := make(chan struct{})
+	defer close(ready)
 	err = dc.Start(context.Background(), &datachannel.Options{
 		OnOpenDatachannel: func() error {
-			close(ready)
+			ready <- struct{}{}
 			return nil
 		},
 		OnMessageDatachannel: func(msg webrtc.DataChannelMessage, peerID string, datachannelID string) {
@@ -53,11 +54,10 @@ func main() {
 
 	dc.SendText("PC_TEST", "DC_1", "Hello world from answerer!")
 
-	ready = make(chan struct{})
 	time.Sleep(5 * time.Second)
 	dc.CreateDC("PC_TEST", "raw", datachannel.OnEvent{
 		OnOpen: func() error {
-			close(ready)
+			ready <- struct{}{}
 			return nil
 		},
 		OnMessage: func(msg webrtc.DataChannelMessage, peerID string, datachannelID string) {
