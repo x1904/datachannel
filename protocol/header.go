@@ -1,6 +1,7 @@
 package protocol
 
 import (
+	"bytes"
 	"encoding/binary"
 	"errors"
 )
@@ -29,7 +30,7 @@ const MetaDataLen = 1 + 32 + 4
 
 type MetaData struct {
 	Type    DataType
-	Name    [32]byte
+	Name    string // 31 max + \0
 	Payload []byte
 }
 
@@ -70,7 +71,14 @@ func Unmarshal(buffer []byte) (Header, error) {
 			Type: DataType(buffer[1]),
 		}
 		length := binary.BigEndian.Uint32(buffer[34:])
-		copy(meta.Name[:], buffer[2:34])
+
+		index := bytes.Index(buffer[2:34], []byte{0x0})
+		if index == -1 {
+			buffer[33] = 0
+			index = 31
+		}
+		meta.Name = string(buffer[2 : index+2])
+
 		if int64(len(buffer[HeaderLen+MetaDataLen:])) < int64(length) {
 			return Header{}, ErrPayloadTooShort
 		}
@@ -102,13 +110,21 @@ func (h *Header) Marshal() []byte {
 			ret := make([]byte, HeaderLen+MetaDataLen)
 			ret[0] = TypeData
 			ret[1] = uint8(meta.Type)
-			copy(ret[2:], meta.Name[:])
+			namelen := len(meta.Name)
+			if namelen > 32 {
+				namelen = 32
+			}
+			copy(ret[2:], meta.Name[:namelen])
 			return ret[:]
 		} else {
 			ret := make([]byte, HeaderLen+MetaDataLen+len(meta.Payload))
 			ret[0] = TypeData
 			ret[1] = uint8(meta.Type)
-			copy(ret[2:], meta.Name[:])
+			namelen := len(meta.Name)
+			if namelen > 32 {
+				namelen = 32
+			}
+			copy(ret[2:], meta.Name[:namelen])
 			binary.BigEndian.PutUint32(ret[34:], uint32(len(meta.Payload)))
 			copy(ret[HeaderLen+MetaDataLen:], meta.Payload[:len(meta.Payload)])
 			return ret
