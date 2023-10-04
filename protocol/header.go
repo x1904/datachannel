@@ -1,6 +1,7 @@
 package protocol
 
 import (
+	"bytes"
 	"encoding/binary"
 	"errors"
 )
@@ -29,8 +30,7 @@ const MetaDataLen = 1 + 32 + 4
 
 type MetaData struct {
 	Type    DataType
-	Name    [32]byte
-	Len     uint32
+	Name    string // 31 max + \0
 	Payload []byte
 }
 
@@ -69,13 +69,20 @@ func Unmarshal(buffer []byte) (Header, error) {
 		}
 		meta := MetaData{
 			Type: DataType(buffer[1]),
-			Len:  binary.BigEndian.Uint32(buffer[34:]),
 		}
-		copy(meta.Name[:], buffer[2:34])
-		if int64(len(buffer[MetaDataLen:])) < int64(meta.Len) {
+		length := binary.BigEndian.Uint32(buffer[34:])
+
+		index := bytes.Index(buffer[2:34], []byte{0x0})
+		if index == -1 {
+			buffer[33] = 0
+			index = 31
+		}
+		meta.Name = string(buffer[2 : index+2])
+
+		if int64(len(buffer[HeaderLen+MetaDataLen:])) < int64(length) {
 			return Header{}, ErrPayloadTooShort
 		}
-		meta.Payload = buffer[MetaDataLen:]
+		meta.Payload = buffer[HeaderLen+MetaDataLen:]
 		return Header{TypeData, meta}, nil
 	default:
 		return Header{}, ErrInvalidType
@@ -84,4 +91,44 @@ func Unmarshal(buffer []byte) (Header, error) {
 
 func isValidDataType(datatype DataType) bool {
 	return datatype >= dataTypeFirst && datatype <= dataTypeLast
+}
+
+func (h *Header) Marshal() []byte {
+
+	if h.Type == TypeControl {
+		return []byte{TypeControl}
+	} else if h.Type == TypeData {
+		if h.Data == nil {
+			return []byte{TypeData}
+		}
+		if !isValidDataType(h.Data.(MetaData).Type) {
+			return []byte{TypeData}
+		}
+		meta := h.Data.(MetaData)
+		if meta.Payload == nil ||
+			len(meta.Payload) == 0 {
+			ret := make([]byte, HeaderLen+MetaDataLen)
+			ret[0] = TypeData
+			ret[1] = uint8(meta.Type)
+			namelen := len(meta.Name)
+			if namelen > 32 {
+				namelen = 32
+			}
+			copy(ret[2:], meta.Name[:namelen])
+			return ret[:]
+		} else {
+			ret := make([]byte, HeaderLen+MetaDataLen+len(meta.Payload))
+			ret[0] = TypeData
+			ret[1] = uint8(meta.Type)
+			namelen := len(meta.Name)
+			if namelen > 32 {
+				namelen = 32
+			}
+			copy(ret[2:], meta.Name[:namelen])
+			binary.BigEndian.PutUint32(ret[34:], uint32(len(meta.Payload)))
+			copy(ret[HeaderLen+MetaDataLen:], meta.Payload[:len(meta.Payload)])
+			return ret
+		}
+	}
+	return nil
 }

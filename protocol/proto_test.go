@@ -1,25 +1,23 @@
 package protocol
 
 import (
+	"bytes"
 	"testing"
 )
 
-type testError struct {
+type test struct {
 	Data []byte
 	Err  error
-}
-type testOK struct {
-	Data []byte
 	V    interface{}
 }
 
-func TestProtocol_Error(t *testing.T) {
-	tests := map[string]testError{
-		"error_null":           testError{nil, ErrBufferNull},
-		"error_short":          testError{[]byte{}, ErrBufferTooShort},
-		"error_type":           testError{[]byte{0xFF}, ErrInvalidType},
-		"error_short_metadata": testError{[]byte{0x2, 0x2}, ErrBufferTooShort},
-		"error_short_metadata_payload": testError{
+func TestProtocol_Unmarshal_KO(t *testing.T) {
+	tests := map[string]test{
+		"error_null":           test{nil, ErrBufferNull, nil},
+		"error_short":          test{[]byte{}, ErrBufferTooShort, nil},
+		"error_type":           test{[]byte{0xFF}, ErrInvalidType, nil},
+		"error_short_metadata": test{[]byte{0x2, 0x2}, ErrBufferTooShort, nil},
+		"error_short_metadata_payload": test{
 			[]byte{
 				0x02,
 				0x03,
@@ -30,8 +28,9 @@ func TestProtocol_Error(t *testing.T) {
 				0x00, 0x00, 0x00, 0x02,
 			},
 			ErrPayloadTooShort,
+			nil,
 		},
-		"error_datatype": testError{
+		"error_datatype": test{
 			[]byte{
 				0x02,
 				0xBB,
@@ -40,7 +39,10 @@ func TestProtocol_Error(t *testing.T) {
 				0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
 				0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
 				0xAA, 0xAA, 0xAA, 0xAA,
-			}, ErrInvalidDataType},
+			},
+			ErrInvalidDataType,
+			nil,
+		},
 	}
 
 	for name, test := range tests {
@@ -50,16 +52,9 @@ func TestProtocol_Error(t *testing.T) {
 		}
 	}
 }
-
-func generateNameFile(name string) [32]byte {
-	ret := [32]byte{}
-	copy(ret[:], name)
-	return ret
-
-}
-func TestProtocol_OK(t *testing.T) {
-	tests := map[string]testOK{
-		"ok_json": testOK{
+func TestProtocol_Unmarshal_OK(t *testing.T) {
+	tests := map[string]test{
+		"ok_json": test{
 			Data: []byte{
 				0x2,
 				0x1,
@@ -71,10 +66,10 @@ func TestProtocol_OK(t *testing.T) {
 			},
 			V: MetaData{
 				Type: DataTypeJSON,
-				Name: generateNameFile("filename_json"),
+				Name: "filename_json",
 			},
 		},
-		"ok_bin32": testOK{
+		"ok_bin32": test{
 			Data: []byte{
 				0x2,
 				0x2,
@@ -86,10 +81,10 @@ func TestProtocol_OK(t *testing.T) {
 			},
 			V: MetaData{
 				Type: DataTypeBIN32,
-				Name: generateNameFile("binary32elf"),
+				Name: "binary32elf",
 			},
 		},
-		"ok_bin64": testOK{
+		"ok_bin64": test{
 			Data: []byte{
 				0x2,
 				0x3,
@@ -101,10 +96,10 @@ func TestProtocol_OK(t *testing.T) {
 			},
 			V: MetaData{
 				Type: DataTypeBIN64,
-				Name: generateNameFile("binary64elf"),
+				Name: "binary64elf",
 			},
 		},
-		"ok_raw": testOK{
+		"ok_raw": test{
 			Data: []byte{
 				0x2,
 				0x4,
@@ -116,31 +111,25 @@ func TestProtocol_OK(t *testing.T) {
 			},
 			V: MetaData{
 				Type: DataTypeRAW,
-				Name: generateNameFile("rawdata"),
+				Name: "rawdata",
 			},
 		},
-		"ok_name": testOK{
+		"ok_name": test{
 			Data: []byte{
 				0x2,
 				0x4,
-				0x01, 0x00, 0x02, 0x00, 0x03, 0x00, 0x04, 0x00,
-				0x05, 0x00, 0x06, 0x00, 0x07, 0x00, 0x08, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x11, 0x22, 0x33, 0x44, 0x55,
+				'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h',
+				'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p',
+				'q', 'r', 's', 't', 'u', 'v', 'w', 'x',
+				'y', 'z', '0', '1', '2', '3', '4', 0,
 				0x00, 0x00, 0x00, 0x00,
 			},
 			V: MetaData{
 				Type: DataTypeRAW,
-				Name: [32]byte{
-					0x01, 0x00, 0x02, 0x00, 0x03, 0x00, 0x04, 0x00,
-					0x05, 0x00, 0x06, 0x00, 0x07, 0x00, 0x08, 0x00,
-					0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-					0x00, 0x00, 0x00, 0x11, 0x22, 0x33, 0x44, 0x55,
-				},
-				Len: 0,
+				Name: "abcdefghijklmnopqrstuvwxyz01234",
 			},
 		},
-		"ok_raw_struct": testOK{
+		"ok_raw_struct": test{
 			Data: []byte{
 				0x2,
 				0x4,
@@ -153,8 +142,7 @@ func TestProtocol_OK(t *testing.T) {
 			},
 			V: MetaData{
 				Type:    DataTypeRAW,
-				Name:    generateNameFile("rawdata2"),
-				Len:     4,
+				Name:    "rawdata2",
 				Payload: []byte{0x1, 0x2, 0x3, 0x4},
 			},
 		},
@@ -169,11 +157,137 @@ func TestProtocol_OK(t *testing.T) {
 
 		if header.Data.(MetaData).Type != test.V.(MetaData).Type ||
 			header.Data.(MetaData).Name != test.V.(MetaData).Name ||
-			header.Data.(MetaData).Len != test.V.(MetaData).Len {
+			len(header.Data.(MetaData).Payload) != len(test.V.(MetaData).Payload) {
 			t.Errorf("[%s]\nWant:  %v\nExpect:%v",
 				name,
 				test.V.(MetaData),
 				header.Data.(MetaData),
+			)
+		}
+	}
+}
+
+func TestProtocol_Marshal_KO(t *testing.T) {
+	tests := map[string]test{
+		"ko_type_invalid": test{
+			Data: nil,
+			V: &Header{
+				Type: 0, // invalid type
+				Data: nil,
+			},
+		},
+		"ko_data_null": test{
+			Data: []byte{TypeData},
+			V: &Header{
+				Type: TypeData,
+				Data: nil,
+			},
+		},
+		"ko_datatype_invalid": test{
+			Data: []byte{TypeData},
+			V: &Header{
+				Type: TypeData,
+				Data: MetaData{},
+			},
+		},
+		"ko_data_len_equal_0": test{
+			Data: []byte{
+				TypeData,
+				DataTypeBIN32,
+				'l', 's', 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00, 0x00, 0x00, 0x00,
+			},
+			V: &Header{
+				Type: TypeData,
+				Data: MetaData{
+					Type: DataTypeBIN32,
+					Name: "ls",
+				},
+			},
+		},
+		"ko_data_data_null": test{
+			Data: []byte{
+				TypeData,
+				DataTypeBIN32,
+				'l', 's', 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00, 0x00, 0x00, 0x00,
+			},
+			V: &Header{
+				Type: TypeData,
+				Data: MetaData{
+					Type: DataTypeBIN32,
+					Name: "ls",
+				},
+			},
+		},
+		"ko_data_len_no_equal_payload": test{
+			Data: []byte{
+				TypeData,
+				DataTypeBIN32,
+				'l', 's', 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00, 0x00, 0x00, 0x00,
+			},
+			V: &Header{
+				Type: TypeData,
+				Data: MetaData{
+					Type: DataTypeBIN32,
+					Name: "ls",
+				},
+			},
+		},
+	}
+	for name, test := range tests {
+		header := test.V.(*Header).Marshal()
+
+		if !bytes.Equal(header, test.Data) {
+			t.Errorf("[%s]\nWant:  %v\nExpect:%v",
+				name,
+				test.Data,
+				header,
+			)
+		}
+	}
+}
+func TestProtocol_Marshal_OK(t *testing.T) {
+	tests := map[string]test{
+		"ok_marshal": test{
+			Data: []byte{
+				TypeData,
+				uint8(DataTypeRAW),
+				'l', 's', 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00, 0x00, 0x00, 0x04,
+				0xDA, 0xED, 0xBE, 0xEF,
+			},
+			V: &Header{
+				Type: TypeData, // invalid type
+				Data: MetaData{
+					Type:    DataTypeRAW,
+					Name:    "ls",
+					Payload: []byte{0xDA, 0xED, 0xBE, 0xEF},
+				},
+			},
+		},
+	}
+	for name, test := range tests {
+		header := test.V.(*Header).Marshal()
+
+		if !bytes.Equal(header, test.Data) {
+			t.Errorf("[%s]\nWant:  %v\nExpect:%v",
+				name,
+				test.Data,
+				header,
 			)
 		}
 	}
